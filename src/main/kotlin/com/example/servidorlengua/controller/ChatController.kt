@@ -2,6 +2,7 @@ package com.example.servidorlengua.controller
 
 import com.example.servidorlengua.service.GoogleTranslationService
 import com.example.servidorlengua.service.SupabaseService
+import com.example.servidorlengua.handler.ChatWebSocketHandler
 import org.springframework.web.bind.annotation.*
 import reactor.core.publisher.Mono
 
@@ -9,7 +10,8 @@ import reactor.core.publisher.Mono
 @RequestMapping("/api")
 class ChatController(
     private val translationService: GoogleTranslationService,
-    private val supabaseService: SupabaseService
+    private val supabaseService: SupabaseService,
+    private val chatWebSocketHandler: ChatWebSocketHandler // Inject Handler
 ) {
 
     @PostMapping("/translate")
@@ -28,6 +30,22 @@ class ChatController(
     @PostMapping("/chat/messages")
     fun sendMessage(@RequestBody message: SendMessageRequest): Mono<Void> {
         return supabaseService.sendMessage(message.content, message.senderId, message.senderName)
+            .then(Mono.fromRunnable {
+                try {
+                    // Broadcast to WebSocket after successful save
+                    // Construct a message compatible with Frontend ChatMessageDTO
+                    val chatMessage = mapOf(
+                        "id" to System.currentTimeMillis(), // Temporary ID for real-time display
+                        "content" to message.content,
+                        "sender_id" to message.senderId,
+                        "sender_name" to message.senderName,
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                    chatWebSocketHandler.broadcast(chatMessage)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            })
     }
 
     data class TranslateRequest(
