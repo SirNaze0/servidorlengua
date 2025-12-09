@@ -18,8 +18,17 @@ class ChatController(
     fun translate(@RequestBody request: TranslateRequest): Mono<Map<String, String>> {
         val source = request.source ?: "es"
         val target = request.target ?: "qu"
-        return translationService.translate(request.q, source, target)
-            .map { mapOf("translatedText" to it) }
+        
+        // 1. Intentar buscar en Validaciones de BD
+        return supabaseService.getValidatedTranslation(request.q, source, target)
+            .map { validatedText -> 
+                mapOf("translatedText" to validatedText) 
+            }
+            .switchIfEmpty(
+                // 2. Si no hay validación aprobada, usar API externa
+                translationService.translate(request.q, source, target)
+                    .map { mapOf("translatedText" to it) }
+            )
     }
 
     @GetMapping("/chat/messages")

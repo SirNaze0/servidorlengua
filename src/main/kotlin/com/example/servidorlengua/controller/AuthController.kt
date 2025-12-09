@@ -11,21 +11,31 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api")
-class AuthController {
-
-    private val users = listOf(
-        LoginResponse(id = "1", username = "profesor1", name = "Profesor Juan", role = "profesor"),
-        LoginResponse(id = "2", username = "estudiante1", name = "Estudiante María", role = "estudiante"),
-        LoginResponse(id = "3", username = "estudiante2", name = "Estudiante Carlos", role = "estudiante")
-    )
+class AuthController(
+    private val supabaseService: com.example.servidorlengua.service.SupabaseService
+) {
 
     @PostMapping("/login")
-    fun login(@RequestBody request: LoginRequest): ResponseEntity<Any> {
-        val user = users.find { it.username == request.username }
-        return if (user != null) {
-            ResponseEntity.ok(user)
-        } else {
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("error" to "Usuario no encontrado"))
-        }
+    fun login(@RequestBody request: LoginRequest): reactor.core.publisher.Mono<ResponseEntity<Any>> {
+        return supabaseService.login(request.username)
+            .map { user ->
+                ResponseEntity.ok(user as Any)
+            }
+            .defaultIfEmpty(
+                ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("error" to "Usuario no encontrado"))
+            )
+    }
+
+    @PostMapping("/register")
+    fun register(@RequestBody request: com.example.servidorlengua.model.RegisterRequest): reactor.core.publisher.Mono<ResponseEntity<Any>> {
+        return supabaseService.registerUser(request.username, request.name, request.role)
+            .map { user ->
+                ResponseEntity.ok(user as Any)
+            }
+            .onErrorResume { e ->
+                reactor.core.publisher.Mono.just(
+                    ResponseEntity.status(HttpStatus.BAD_REQUEST).body(mapOf("error" to "Error al registrar: ${e.message}"))
+                )
+            }
     }
 }
