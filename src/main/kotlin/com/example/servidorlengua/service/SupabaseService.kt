@@ -40,6 +40,168 @@ class SupabaseService(
             .bodyToMono(Void::class.java)
     }
 
+    fun login(username: String): Mono<com.example.servidorlengua.model.LoginResponse> {
+        // 1. Buscar usuario por username en tabla 'usuarios'
+        return client.get()
+            .uri { uriBuilder ->
+                uriBuilder.path("/rest/v1/usuarios")
+                    .queryParam("username", "eq.$username")
+                    .queryParam("select", "*")
+                    .build()
+            }
+            .retrieve()
+            .bodyToFlux(Usuario::class.java)
+            .next() // Tomar el primero (debería ser único)
+            .flatMap { usuario ->
+                // 2. Si es profesor, buscar nombre en 'profesores'
+                if (usuario.role == "profesor") {
+                    client.get()
+                        .uri { uriBuilder ->
+                            uriBuilder.path("/rest/v1/profesores")
+                                .queryParam("id_user", "eq.${usuario.id}")
+                                .queryParam("select", "nombre")
+                                .build()
+                        }
+                        .retrieve()
+                        .bodyToFlux(Profesor::class.java)
+                        .next()
+                        .map { pro ->
+                            com.example.servidorlengua.model.LoginResponse(
+                                id = usuario.id.toString(),
+                                username = usuario.username,
+                                name = pro.nombre,
+                                role = usuario.role
+                            )
+                        }
+                } else {
+                    // 3. Si es estudiante, buscar nombre en 'estudiantes'
+                    client.get()
+                        .uri { uriBuilder ->
+                            uriBuilder.path("/rest/v1/estudiantes")
+                                .queryParam("id_user", "eq.${usuario.id}")
+                                .queryParam("select", "nombre")
+                                .build()
+                        }
+                        .retrieve()
+                        .bodyToFlux(Estudiante::class.java)
+                        .next()
+                        .map { est ->
+                            com.example.servidorlengua.model.LoginResponse(
+                                id = usuario.id.toString(),
+                                username = usuario.username,
+                                name = est.nombre,
+                                role = usuario.role
+                            )
+                        }
+                }
+            }
+    }
+
+    fun registerUser(username: String, name: String, role: String): Mono<com.example.servidorlengua.model.LoginResponse> {
+        // 1. Insertar en tabla 'usuarios'
+        val newUser = mapOf(
+            "username" to username,
+            "role" to role
+        )
+        return client.post()
+            .uri("/rest/v1/usuarios")
+            .header("Prefer", "return=representation") // Para que devuelva el ID creado
+            .bodyValue(newUser)
+            .retrieve()
+            .bodyToFlux(Usuario::class.java)
+            .next()
+            .flatMap { usuario ->
+                // 2. Insertar en tabla rol correspondiente
+                val details = mapOf(
+                    "nombre" to name,
+                    "id_user" to usuario.id
+                )
+                val table = if (role == "profesor") "profesores" else "estudiantes"
+                
+                client.post()
+                    .uri("/rest/v1/$table")
+                    .bodyValue(details)
+                    .retrieve()
+                    .toBodilessEntity() // No necesitamos la respuesta del detalle, solo que se guarde
+                    .thenReturn(
+                        com.example.servidorlengua.model.LoginResponse(
+                            id = usuario.id.toString(),
+                            username = usuario.username,
+                            name = name,
+                            role = usuario.role
+                        )
+                    )
+            }
+    }
+
+    fun getValidatedTranslation(text: String, source: String, target: String): Mono<String> {
+        // Lógica de dirección:
+        // Si source="es" -> buscamos en 'frase', devolvemos 'frase_traducida'
+        // Si source="qu" -> buscamos en 'frase_traducida', devolvemos 'frase'
+        val isSpanishToQuechua = source == "es"
+        val columnToSearch = if (isSpanishToQuechua) "frase" else "frase_traducida"
+        val columnToReturn = if (isSpanishToQuechua) "frase_traducida" else "frase"
+
+        return client.get()
+            .uri { uriBuilder ->
+                uriBuilder.path("/rest/v1/validation")
+                    .queryParam(columnToSearch, "eq.$text")
+                    .queryParam("select", "*")
+                    .build()
+            }
+            .retrieve()
+            .bodyToFlux(ValidationEntry::class.java)
+            .next()
+            .flatMap { validation ->
+                // Si encontramos la frase, buscamos las validaciones de profesores
+                client.get()
+                    .uri { uriBuilder ->
+                        uriBuilder.path("/rest/v1/profesor-validacion")
+                            .queryParam("id_validacion", "eq.${validation.id}")
+                            .queryParam("select", "*")
+                            .build()
+                    }
+                    .retrieve()
+                    .bodyToFlux(ProfesorValidation::class.java)
+                    .collectList()
+                    .flatMap { votes ->
+                        if (votes.isEmpty()) Mono.empty()
+                        else {
+                            val totalVotes = votes.size
+                            val correctVotes = votes.count { it.Correcto == true }
+                            
+                            // Regla: Más de la mitad de profesores que lo validaron
+                            if (correctVotes > (totalVotes / 2)) {
+                                val result = if (isSpanishToQuechua) validation.frase_traducida else validation.frase
+                                if (result != null) Mono.just(result) else Mono.empty()
+                            } else {
+                                Mono.empty()
+                            }
+                        }
+                    }
+            }
+    }
+
+    data class Usuario(val id: Long, val username: String, val role: String)
+    data class Profesor(val nombre: String)
+    data class Estudiante(val nombre: String)
+    
+    data class ValidationEntry(
+        val id: Long,
+        val frase: String,
+        @com.fasterxml.jackson.annotation.JsonProperty("frase_traducida")
+        val frase_traducida: String?,
+        val nmr_validacion: Long?
+    )
+
+    data class ProfesorValidation(
+        @com.fasterxml.jackson.annotation.JsonProperty("IdProfValidacion")
+        val id: Long,
+        val id_validacion: Long,
+        @com.fasterxml.jackson.annotation.JsonProperty("Correcto")
+        val Correcto: Boolean?
+    )
+
     data class ChatMessage(
         val id: Long? = null,
         val content: String,
