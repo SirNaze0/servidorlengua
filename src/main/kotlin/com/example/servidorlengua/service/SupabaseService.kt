@@ -19,6 +19,58 @@ class SupabaseService(
         .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
         .build()
 
+    fun getValidations(): Mono<List<Validation>> {
+        return client.get()
+            .uri("/rest/v1/validation?select=*&order=id.asc")
+            .retrieve()
+            .bodyToFlux(Validation::class.java)
+            .collectList()
+    }
+
+    fun createValidation(frase: String, fraseTraducida: String): Mono<Void> {
+        val validation = mapOf(
+            "frase" to frase,
+            "frase_traducida" to fraseTraducida,
+            "nmr_validacion" to 0
+        )
+        return client.post()
+            .uri("/rest/v1/validation")
+            .bodyValue(validation)
+            .retrieve()
+            .bodyToMono(Void::class.java)
+    }
+
+    fun updateValidation(id: Long, fraseTraducida: String): Mono<Void> {
+        val update = mapOf(
+            "frase_traducida" to fraseTraducida
+        )
+        return client.patch()
+            .uri("/rest/v1/validation?id=eq.$id")
+            .bodyValue(update)
+            .retrieve()
+            .bodyToMono(Void::class.java)
+    }
+
+    fun incrementValidationCounter(id: Long): Mono<Void> {
+        // Read-Modify-Write approach for prototype
+        return client.get()
+            .uri("/rest/v1/validation?id=eq.$id&select=nmr_validacion")
+            .retrieve()
+            .bodyToFlux(Validation::class.java)
+            .next()
+            .flatMap { currentValidation ->
+                val newCount = currentValidation.nmrValidacion + 1
+                val update = mapOf("nmr_validacion" to newCount)
+                client.patch()
+                    .uri("/rest/v1/validation?id=eq.$id")
+                    .bodyValue(update)
+                    .retrieve()
+                    .bodyToMono(Void::class.java)
+            }
+    }
+
+    // --- Message Methods ---
+
     fun getMessages(): Mono<List<ChatMessage>> {
         return client.get()
             .uri("/rest/v1/messages?select=*&order=created_at.asc")
@@ -40,6 +92,15 @@ class SupabaseService(
             .bodyToMono(Void::class.java)
     }
 
+    // --- Data Classes ---
+
+    data class Validation(
+        val id: Long,
+        val frase: String,
+        @com.fasterxml.jackson.annotation.JsonProperty("frase_traducida")
+        val fraseTraducida: String,
+        @com.fasterxml.jackson.annotation.JsonProperty("nmr_validacion")
+        val nmrValidacion: Long
     fun login(username: String): Mono<com.example.servidorlengua.model.LoginResponse> {
         // 1. Buscar usuario por username en tabla 'usuarios'
         return client.get()
