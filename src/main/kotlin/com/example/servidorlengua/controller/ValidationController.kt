@@ -33,9 +33,17 @@ class ValidationController(private val supabaseService: SupabaseService) {
     }
 
     @PostMapping("/validations/{id}/vote")
-    fun voteValidation(@PathVariable id: Long): Mono<Void> {
-        return supabaseService.incrementValidationCounter(id)
+    fun voteValidation(
+        @PathVariable id: Long,
+        @RequestBody request: VoteValidationRequest
+    ): Mono<Void> {
+        return supabaseService.registerVote(id, request.professorId, request.isCorrect)
     }
+
+    data class VoteValidationRequest(
+        val professorId: Long,
+        val isCorrect: Boolean
+    )
 
     data class CreateValidationRequest(
         val frase: String,

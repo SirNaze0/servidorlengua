@@ -54,12 +54,12 @@ class SupabaseService(
     fun incrementValidationCounter(id: Long): Mono<Void> {
         // Read-Modify-Write approach for prototype
         return client.get()
-            .uri("/rest/v1/validation?id=eq.$id&select=nmr_validacion")
+            .uri("/rest/v1/validation?id=eq.$id&select=*")
             .retrieve()
             .bodyToFlux(Validation::class.java)
             .next()
             .flatMap { currentValidation ->
-                val newCount = currentValidation.nmrValidacion + 1
+                val newCount = (currentValidation.nmrValidacion ?: 0) + 1
                 val update = mapOf("nmr_validacion" to newCount)
                 client.patch()
                     .uri("/rest/v1/validation?id=eq.$id")
@@ -68,6 +68,44 @@ class SupabaseService(
                     .bodyToMono(Void::class.java)
             }
     }
+
+    fun registerVote(validationId: Long, professorId: Long, isCorrect: Boolean): Mono<Void> {
+        // 1. Verificar si ya votó
+        return client.get()
+            .uri { uriBuilder ->
+                uriBuilder.path("/rest/v1/profesor-validacion")
+                    .queryParam("id_validacion", "eq.$validationId")
+                    .queryParam("idProsor", "eq.$professorId")
+                    .queryParam("select", "*")
+                    .build()
+            }
+            .retrieve()
+            .bodyToFlux(ProfesorValidation::class.java)
+            .collectList()
+            .flatMap { votes ->
+                if (votes.isNotEmpty()) {
+                    Mono.error(RuntimeException("Ya has votado esta traducción"))
+                } else {
+                    // 2. Registrar voto
+                    val vote = mapOf(
+                        "id_validacion" to validationId,
+                        "idProsor" to professorId,
+                        "Correcto" to isCorrect
+                    )
+                    client.post()
+                        .uri("/rest/v1/profesor-validacion")
+                        .bodyValue(vote)
+                        .retrieve()
+                        .bodyToMono(Void::class.java)
+                        .then(
+                            // 3. Incrementar contador
+                            incrementValidationCounter(validationId)
+                        )
+                }
+            }
+    }
+
+
 
     // --- Message Methods ---
 
@@ -102,7 +140,7 @@ class SupabaseService(
         @com.fasterxml.jackson.annotation.JsonProperty("frase_traducida")
         val fraseTraducida: String,
         @com.fasterxml.jackson.annotation.JsonProperty("nmr_validacion")
-        val nmrValidacion: Long
+        val nmrValidacion: Long?
     )
 
     fun login(username: String): Mono<com.example.servidorlengua.model.LoginResponse> {
@@ -278,8 +316,9 @@ class SupabaseService(
         val id: Long,
         val id_validacion: Long,
         @com.fasterxml.jackson.annotation.JsonProperty("Correcto")
-        @com.fasterxml.jackson.annotation.JsonAlias("correcto")
-        val Correcto: Boolean?
+        val Correcto: Boolean?,
+        @com.fasterxml.jackson.annotation.JsonProperty("idProsor")
+        val idProsor: Long
     )
 
     data class ChatMessage(
