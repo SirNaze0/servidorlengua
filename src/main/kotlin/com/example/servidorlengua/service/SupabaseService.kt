@@ -103,6 +103,8 @@ class SupabaseService(
         val fraseTraducida: String,
         @com.fasterxml.jackson.annotation.JsonProperty("nmr_validacion")
         val nmrValidacion: Long
+    )
+
     fun login(username: String): Mono<com.example.servidorlengua.model.LoginResponse> {
         // 1. Buscar usuario por username en tabla 'usuarios'
         return client.get()
@@ -198,6 +200,8 @@ class SupabaseService(
     }
 
     fun getValidatedTranslation(text: String, source: String, target: String): Mono<String> {
+        println("DEBUG: getValidatedTranslation called for text='$text', source='$source', target='$target'")
+        
         // Lógica de dirección:
         // Si source="es" -> buscamos en 'frase', devolvemos 'frase_traducida'
         // Si source="qu" -> buscamos en 'frase_traducida', devolvemos 'frase'
@@ -214,9 +218,11 @@ class SupabaseService(
             }
             .retrieve()
             .bodyToFlux(ValidationEntry::class.java)
+            .doOnNext { println("DEBUG: Found validation entry: $it") }
             .next()
             .flatMap { validation ->
                 // Si encontramos la frase, buscamos las validaciones de profesores
+                println("DEBUG: Searching votes for validation ID: ${validation.id}")
                 client.get()
                     .uri { uriBuilder ->
                         uriBuilder.path("/rest/v1/profesor-validacion")
@@ -228,20 +234,29 @@ class SupabaseService(
                     .bodyToFlux(ProfesorValidation::class.java)
                     .collectList()
                     .flatMap { votes ->
-                        if (votes.isEmpty()) Mono.empty()
-                        else {
+                        println("DEBUG: Votes found: ${votes.size}")
+                        if (votes.isEmpty()) {
+                            println("DEBUG: No votes found.")
+                            Mono.empty()
+                        } else {
                             val totalVotes = votes.size
                             val correctVotes = votes.count { it.Correcto == true }
+                            println("DEBUG: Correct votes: $correctVotes / $totalVotes")
                             
                             // Regla: Más de la mitad de profesores que lo validaron
-                            if (correctVotes > (totalVotes / 2)) {
+                            if (correctVotes > (totalVotes / 2.0)) { 
                                 val result = if (isSpanishToQuechua) validation.frase_traducida else validation.frase
+                                println("DEBUG: Validation PASSED. Result: $result")
                                 if (result != null) Mono.just(result) else Mono.empty()
                             } else {
+                                println("DEBUG: Validation FAILED (Not enough correct votes).")
                                 Mono.empty()
                             }
                         }
                     }
+            }
+            .doOnSuccess { 
+                if (it == null) println("DEBUG: getValidatedTranslation returning EMPTY (will fallback to API)")
             }
     }
 
@@ -259,9 +274,11 @@ class SupabaseService(
 
     data class ProfesorValidation(
         @com.fasterxml.jackson.annotation.JsonProperty("IdProfValidacion")
+        @com.fasterxml.jackson.annotation.JsonAlias("idprofvalidacion")
         val id: Long,
         val id_validacion: Long,
         @com.fasterxml.jackson.annotation.JsonProperty("Correcto")
+        @com.fasterxml.jackson.annotation.JsonAlias("correcto")
         val Correcto: Boolean?
     )
 
