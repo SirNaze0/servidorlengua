@@ -28,6 +28,9 @@ class GoogleTranslationService(
             .retrieve()
             .bodyToMono(TranslationResponse::class.java)
             .map { it.data.translations.firstOrNull()?.translatedText ?: text }
+            .doOnError { e ->
+                println("ERROR: Google Translation API failed: ${e.message}")
+            }
             .onErrorReturn(text)
     }
 

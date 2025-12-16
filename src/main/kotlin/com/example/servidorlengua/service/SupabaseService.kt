@@ -293,8 +293,8 @@ class SupabaseService(
                         }
                     }
             }
-            .doOnSuccess { 
-                if (it == null) println("DEBUG: getValidatedTranslation returning EMPTY (will fallback to API)")
+            .doOnSuccess { result: String? ->
+                if (result == null) println("DEBUG: getValidatedTranslation returning EMPTY (will fallback to API)")
             }
     }
 
