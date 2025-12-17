@@ -142,11 +142,20 @@ Español="$originalSpanish" Quechua="$userQuechua" →
 
             println("🔍 Respuesta raw de Gemini (texto extraído): $text")
 
-            // Limpiar markdown y espacios
+            // Limpiar markdown y espacios primero
             var cleanText = text
                 .replace("```json", "")
                 .replace("```", "")
                 .trim()
+
+            // 🔍 EXTRACCIÓN ROBUSTA DE JSON
+            // Busca el primer '{' y el último '}' para ignorar texto conversacional previo
+            val startIndex = cleanText.indexOf("{")
+            val endIndex = cleanText.lastIndexOf("}")
+            
+            if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                cleanText = cleanText.substring(startIndex, endIndex + 1)
+            }
 
             println("🧹 JSON limpio ANTES de validación: $cleanText")
 
