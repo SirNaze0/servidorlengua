@@ -1,10 +1,12 @@
 package com.example.servidorlengua.service
 
+
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Service
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Mono
+import java.util.UUID
 
 @Service
 class SupabaseService(
@@ -109,6 +111,9 @@ class SupabaseService(
 
     // --- Message Methods ---
 
+
+    // --- Message Methods ---
+
     fun getMessages(): Mono<List<ChatMessage>> {
         return client.get()
             .uri("/rest/v1/messages?select=*&order=created_at.asc")
@@ -131,6 +136,25 @@ class SupabaseService(
             .retrieve()
             .bodyToMono(Void::class.java)
     }
+
+    // --- Offline Sessions ---
+
+    private fun createOfflineSession(userId: Long): Mono<String> {
+        val token = UUID.randomUUID().toString()
+        val sessionData = mapOf(
+            "user_id" to userId,
+            "token" to token,
+            // expires_at can be handled by default in DB or we can set it here if needed.
+            // For now, let's just insert user_id and token.
+        )
+        return client.post()
+            .uri("/rest/v1/offline_sessions")
+            .bodyValue(sessionData)
+            .retrieve()
+            .toBodilessEntity()
+            .thenReturn(token)
+    }
+
 
     // --- Data Classes ---
 
@@ -197,6 +221,11 @@ class SupabaseService(
                             )
                         }
                 }
+                }
+            .flatMap { loginResponse ->
+                createOfflineSession(loginResponse.id.toLong()).map { token ->
+                    loginResponse.copy(token = token)
+                }
             }
     }
 
@@ -234,6 +263,11 @@ class SupabaseService(
                             role = usuario.role
                         )
                     )
+            }
+            .flatMap { loginResponse ->
+                createOfflineSession(loginResponse.id.toLong()).map { token ->
+                    loginResponse.copy(token = token)
+                }
             }
     }
 
