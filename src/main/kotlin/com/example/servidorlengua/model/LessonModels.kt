@@ -10,7 +10,10 @@ data class Lesson(
     val duration: Int,
     val is_offline: Boolean,
     val tags: List<String>,
-    val content: Any? = null
+    val content: String? = null,
+    val correct_translation: String? = null,
+    val offline_help: String? = null,
+    val offline_feedback: Map<String, String>? = null
 )
 
 // ----------------------
@@ -32,6 +35,10 @@ data class LessonProgressUpdateRequest(
     val lesson_id: Long,
     val completed: Boolean,
     val minutes: Int
+)
+
+data class LessonProgressBatchRequest(
+    val updates: List<LessonProgressUpdateRequest>
 )
 
 // ----------------------

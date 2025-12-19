@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Service
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 @Service
@@ -62,6 +63,21 @@ class LessonService(
             .bodyValue(update)
             .retrieve()
             .bodyToMono(Void::class.java)
+    }
+
+    // -------------------------------------------------------
+    // 3B. ACTUALIZAR PROGRESO POR LOTES (SYNC)
+    // -------------------------------------------------------
+    fun updateUserProgressBatch(request: LessonProgressBatchRequest): Mono<Void> {
+        return Flux.fromIterable(request.updates)
+            .flatMap { update ->
+                updateUserProgress(update)
+                    .onErrorResume { e ->
+                        println("Error syncing update: $update | Error: ${e.message}")
+                        Mono.empty() // Continue with others even if one fails
+                    }
+            }
+            .then()
     }
 
     // -------------------------------------------------------

@@ -40,6 +40,13 @@ class LessonController(
         lessonService.updateUserProgress(request)
 
     // ----------------------------------------------
+    // 4B. ACTUALIZAR PROGRESO POR LOTES (SYNC)
+    // ----------------------------------------------
+    @PostMapping("/progress/batch")
+    fun updateProgressBatch(@RequestBody request: LessonProgressBatchRequest): Mono<Void> =
+        lessonService.updateUserProgressBatch(request)
+
+    // ----------------------------------------------
     // 5. TRADUCIR TEXTO PARA LECCIÓN (ES → QU)
     // ----------------------------------------------
     @PostMapping("/translate")
