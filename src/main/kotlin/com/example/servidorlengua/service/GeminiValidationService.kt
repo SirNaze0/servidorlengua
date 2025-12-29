@@ -16,7 +16,7 @@ import java.time.Duration
 
 @Service
 class GeminiValidationService(
-    @Value("\${gemini.api.key}") private val apiKey: String,
+    @Value("\${GEMINI_API_KEY}") private val apiKey: String,
     private val objectMapper: ObjectMapper
 ) {
 
